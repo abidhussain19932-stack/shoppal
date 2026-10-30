@@ -99,7 +99,9 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 def build_bot() -> Application:
-    app = Application.builder().token(settings.telegram_token).build()
+    app = (Application.builder().token(settings.telegram_token)
+           .connect_timeout(20).read_timeout(30).write_timeout(30).pool_timeout(20)
+           .get_updates_read_timeout(40).build())
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("whoami", whoami))
     app.add_handler(CommandHandler("cart", cart_cmd))
@@ -159,7 +161,8 @@ PAGE = """<!doctype html><meta name=viewport content="width=device-width,initial
 
 @api.get("/")
 async def health():
-    return {"ok": True, "store": settings.store_name, "products": len(catalog.products)}
+    return {"ok": True, "store": settings.store_name, "products": len(catalog.products),
+            "telegram": "ready" if tg else "connecting", "paypal": bool(paypal)}
 
 
 @api.get("/paypal/return", response_class=HTMLResponse)
@@ -203,27 +206,46 @@ async def paypal_webhook(request: Request):
 
 @api.on_event("startup")
 async def on_startup():
-    global tg
     if not settings.telegram_token:
         log.warning("TELEGRAM_BOT_TOKEN not set; running API only")
         return
-    tg = build_bot()
-    await tg.initialize()
-    await tg.start()
-    if settings.telegram_mode == "webhook" and settings.public_base_url.startswith("https://"):
-        await tg.bot.set_webhook(f"{settings.public_base_url}/telegram/webhook",
-                                 secret_token=TG_SECRET, allowed_updates=["message", "callback_query"])
-        log.info("Telegram webhook set")
-    else:
-        await tg.bot.delete_webhook()
-        await tg.updater.start_polling(drop_pending_updates=True)
-        log.info("Telegram bot polling started")
+    # Connect to Telegram in the background so a slow Telegram API never stops the web
+    # server (and the PayPal return/webhook endpoints) from coming up.
+    asyncio.create_task(start_telegram())
+
+
+async def start_telegram(attempts: int = 10):
+    global tg
+    for i in range(1, attempts + 1):
+        app = build_bot()
+        try:
+            await app.initialize()
+            await app.start()
+            if settings.telegram_mode == "webhook" and settings.public_base_url.startswith("https://"):
+                await app.bot.set_webhook(f"{settings.public_base_url}/telegram/webhook",
+                                          secret_token=TG_SECRET,
+                                          allowed_updates=["message", "callback_query"])
+                log.info("Telegram webhook set (attempt %d)", i)
+            else:
+                await app.bot.delete_webhook()
+                await app.updater.start_polling(drop_pending_updates=True)
+                log.info("Telegram bot polling started (attempt %d)", i)
+            tg = app
+            return
+        except Exception as e:  # network hiccup or bad token: log and retry with backoff
+            log.warning("Telegram start attempt %d failed: %r", i, e)
+            with contextlib.suppress(Exception):
+                await app.shutdown()
+            await asyncio.sleep(min(5 * i, 60))
+    log.error("Telegram bot could not start; API endpoints still running")
 
 
 @api.post("/telegram/webhook")
 async def telegram_webhook(request: Request):
-    if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != TG_SECRET or not tg:
+    if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != TG_SECRET:
         raise HTTPException(status_code=403)
+    if not tg:
+        raise HTTPException(status_code=503)  # still connecting; Telegram retries
     await tg.process_update(Update.de_json(await request.json(), tg.bot))
     return {"ok": True}
 
