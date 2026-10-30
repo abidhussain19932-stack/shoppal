@@ -1,5 +1,9 @@
 # ShopPal: an AI sales agent that sells and gets paid inside Telegram
 
+**Demo video (2 min):** https://youtu.be/oycBfRE6OjY  
+**Try the bot:** https://t.me/shoppalpaypalbot (PayPal Sandbox) · **Live API:** https://shoppal-fp5x.onrender.com
+
+
 ShopPal turns any small shop's catalog into a Telegram salesperson. Buyers chat naturally in English, Hindi or Hinglish ("lal kurta chahiye size M, $30 ke andar"). An LLM agent searches the catalog, answers questions, builds the cart and creates a **PayPal checkout** without leaving the chat. When PayPal confirms the payment, the buyer and the seller are both notified instantly.
 
 Built for the **PayPal AI Hackathon 2026** (Best Use of Agentic Commerce / Best Use of PayPal + AI).
