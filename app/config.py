@@ -20,7 +20,11 @@ class Settings:
     llm_api_key: str = os.getenv("LLM_API_KEY", "")
     llm_base_url: str = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
     llm_model: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
-    public_base_url: str = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
+    # Render sets RENDER_EXTERNAL_URL automatically, so PUBLIC_BASE_URL is optional there.
+    public_base_url: str = (os.getenv("PUBLIC_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL")
+                            or "http://localhost:8000").rstrip("/")
+    # "webhook" (best for hosts that sleep, like Render free) or "polling" (local dev).
+    telegram_mode: str = os.getenv("TELEGRAM_MODE", "webhook" if os.getenv("RENDER_EXTERNAL_URL") else "polling")
     store_name: str = os.getenv("STORE_NAME", "Noor Boutique")
     db_path: str = os.getenv("DB_PATH", "shoppal.db")
     catalog_path: str = os.getenv("CATALOG_PATH", "data/catalog.json")

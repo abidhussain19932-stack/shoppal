@@ -5,11 +5,12 @@ for PayPal return/cancel pages and webhooks.
 """
 import asyncio
 import contextlib
+import hashlib
 import html
 import logging
 import re
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from openai import AsyncOpenAI
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -32,6 +33,8 @@ paypal = (PayPal(settings.paypal_client_id, settings.paypal_client_secret, setti
 llm = AsyncOpenAI(api_key=settings.llm_api_key or "missing", base_url=settings.llm_base_url)
 agent = ShopAgent(llm, settings.llm_model, catalog, store, paypal, settings)
 tg: Application | None = None
+# Secret Telegram echoes on every webhook call, derived from the bot token so no extra env var is needed.
+TG_SECRET = hashlib.sha256(f"shoppal:{settings.telegram_token}".encode()).hexdigest()[:48]
 
 
 # ---------------- Telegram ----------------
@@ -207,13 +210,28 @@ async def on_startup():
     tg = build_bot()
     await tg.initialize()
     await tg.start()
-    await tg.updater.start_polling(drop_pending_updates=True)
-    log.info("Telegram bot polling started")
+    if settings.telegram_mode == "webhook" and settings.public_base_url.startswith("https://"):
+        await tg.bot.set_webhook(f"{settings.public_base_url}/telegram/webhook",
+                                 secret_token=TG_SECRET, allowed_updates=["message", "callback_query"])
+        log.info("Telegram webhook set")
+    else:
+        await tg.bot.delete_webhook()
+        await tg.updater.start_polling(drop_pending_updates=True)
+        log.info("Telegram bot polling started")
+
+
+@api.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != TG_SECRET or not tg:
+        raise HTTPException(status_code=403)
+    await tg.process_update(Update.de_json(await request.json(), tg.bot))
+    return {"ok": True}
 
 
 @api.on_event("shutdown")
 async def on_shutdown():
     if tg:
-        await tg.updater.stop()
+        if tg.updater.running:
+            await tg.updater.stop()
         await tg.stop()
         await tg.shutdown()

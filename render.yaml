@@ -26,7 +26,5 @@ services:
         value: https://api.groq.com/openai/v1
       - key: LLM_MODEL
         value: openai/gpt-oss-120b
-      - key: PUBLIC_BASE_URL
-        sync: false
       - key: STORE_NAME
         value: Noor Boutique
