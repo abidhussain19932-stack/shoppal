@@ -1,0 +1,163 @@
+[
+  {
+    "sku": "K101",
+    "name": "Red Cotton Kurta",
+    "category": "kurta",
+    "price": 24.0,
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "color": "red",
+    "description": "Hand-block printed cotton kurta, breathable for summer.",
+    "stock": 12
+  },
+  {
+    "sku": "K102",
+    "name": "Navy Chikankari Kurta",
+    "category": "kurta",
+    "price": 39.0,
+    "sizes": [
+      "M",
+      "L",
+      "XL"
+    ],
+    "color": "navy",
+    "description": "Lucknowi chikankari embroidery on soft cotton.",
+    "stock": 5
+  },
+  {
+    "sku": "K103",
+    "name": "Mustard Linen Kurta",
+    "category": "kurta",
+    "price": 32.0,
+    "sizes": [
+      "S",
+      "M",
+      "L"
+    ],
+    "color": "yellow",
+    "description": "Relaxed-fit linen kurta with wooden buttons.",
+    "stock": 8
+  },
+  {
+    "sku": "S201",
+    "name": "Banarasi Silk Saree - Maroon",
+    "category": "saree",
+    "price": 89.0,
+    "sizes": [
+      "Free"
+    ],
+    "color": "maroon",
+    "description": "Pure Banarasi silk with gold zari border, blouse piece included.",
+    "stock": 3
+  },
+  {
+    "sku": "S202",
+    "name": "Cotton Mul Saree - Teal",
+    "category": "saree",
+    "price": 35.0,
+    "sizes": [
+      "Free"
+    ],
+    "color": "teal",
+    "description": "Light everyday mulmul cotton saree.",
+    "stock": 10
+  },
+  {
+    "sku": "D301",
+    "name": "Embroidered Dupatta - Ivory",
+    "category": "dupatta",
+    "price": 18.0,
+    "sizes": [
+      "Free"
+    ],
+    "color": "white",
+    "description": "Georgette dupatta with mirror work.",
+    "stock": 15
+  },
+  {
+    "sku": "J401",
+    "name": "Oxidised Jhumka Earrings",
+    "category": "jewellery",
+    "price": 12.0,
+    "sizes": [
+      "Free"
+    ],
+    "color": "silver",
+    "description": "Lightweight oxidised silver-tone jhumkas.",
+    "stock": 25
+  },
+  {
+    "sku": "J402",
+    "name": "Kundan Necklace Set",
+    "category": "jewellery",
+    "price": 45.0,
+    "sizes": [
+      "Free"
+    ],
+    "color": "gold",
+    "description": "Kundan necklace with matching earrings.",
+    "stock": 4
+  },
+  {
+    "sku": "M501",
+    "name": "Men's White Pathani Suit",
+    "category": "menswear",
+    "price": 49.0,
+    "sizes": [
+      "M",
+      "L",
+      "XL",
+      "XXL"
+    ],
+    "color": "white",
+    "description": "Cotton pathani suit, ideal for Eid and festivals.",
+    "stock": 7
+  },
+  {
+    "sku": "M502",
+    "name": "Men's Nehru Jacket - Black",
+    "category": "menswear",
+    "price": 38.0,
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "color": "black",
+    "description": "Textured Nehru jacket, pairs with any kurta.",
+    "stock": 6
+  },
+  {
+    "sku": "F601",
+    "name": "Kolhapuri Chappals",
+    "category": "footwear",
+    "price": 22.0,
+    "sizes": [
+      "6",
+      "7",
+      "8",
+      "9",
+      "10"
+    ],
+    "color": "brown",
+    "description": "Handmade leather Kolhapuris.",
+    "stock": 9
+  },
+  {
+    "sku": "B701",
+    "name": "Embroidered Potli Bag",
+    "category": "accessories",
+    "price": 15.0,
+    "sizes": [
+      "Free"
+    ],
+    "color": "pink",
+    "description": "Silk potli bag with drawstring and beadwork.",
+    "stock": 20
+  }
+]
