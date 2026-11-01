@@ -336,6 +336,7 @@ class ShopAgent:
                                                             {"role": "assistant", "content": reply.text}])
                 return reply
         system = SYSTEM.format(store=self.s.store_name, currency=self.s.currency)
+        system += f"\nToday is {time.strftime('%Y-%m-%d')}."
         system += "\n\nCURRENT CART: " + json.dumps(self.cart_view(chat_id))
         msgs = [{"role": "system", "content": system}]
         msgs += history + [{"role": "user", "content": user_text}]
