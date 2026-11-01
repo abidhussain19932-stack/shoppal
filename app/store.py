@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS orders (paypal_order_id TEXT PRIMARY KEY, chat_id TEX
     items TEXT, total REAL, currency TEXT, status TEXT, created REAL, updated REAL,
     buyer_name TEXT, capture_id TEXT);
 CREATE TABLE IF NOT EXISTS history (chat_id TEXT PRIMARY KEY, messages TEXT);
+CREATE TABLE IF NOT EXISTS usage (ts REAL, end_user TEXT, role TEXT, requested TEXT, model TEXT,
+    provider TEXT, otari_fallback INTEGER, app_fallback INTEGER, attempts INTEGER, cost_usd REAL,
+    prompt_tokens INTEGER, completion_tokens INTEGER, request_id TEXT, latency_ms INTEGER, tools TEXT);
+CREATE INDEX IF NOT EXISTS usage_user_ts ON usage (end_user, ts);
 """
 
 
@@ -88,3 +92,37 @@ class Store:
 
     def reset_history(self, chat_id):
         self._exec("DELETE FROM history WHERE chat_id=?", (str(chat_id),))
+
+    # usage (one row per Otari call: model served, provider, fallback, cost)
+    def log_usage(self, info, end_user=""):
+        self._exec("INSERT INTO usage VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                   (time.time(), str(end_user or ""), info.role, info.requested, info.served_model,
+                    info.provider, int(info.otari_fallback), int(info.app_fallback), info.attempts,
+                    info.cost_usd, info.prompt_tokens, info.completion_tokens, info.request_id,
+                    info.latency_ms, json.dumps(info.otari_tools)))
+
+    def spend_since(self, since_ts: float, end_user=None) -> float:
+        if end_user is None:
+            r = self._exec("SELECT COALESCE(SUM(cost_usd),0) s FROM usage WHERE ts>=?", (since_ts,)).fetchone()
+        else:
+            r = self._exec("SELECT COALESCE(SUM(cost_usd),0) s FROM usage WHERE ts>=? AND end_user=?",
+                           (since_ts, str(end_user))).fetchone()
+        return float(r["s"])
+
+    def usage_summary(self) -> dict:
+        def rows(sql, args=()):
+            return [dict(r) for r in self._exec(sql, args).fetchall()]
+        by_role = rows("""SELECT role, COUNT(*) calls, SUM(cost_usd) cost_usd,
+            SUM(prompt_tokens+completion_tokens) tokens, SUM(otari_fallback) otari_fallbacks,
+            SUM(app_fallback) app_fallbacks, CAST(AVG(latency_ms) AS INTEGER) avg_ms
+            FROM usage GROUP BY role ORDER BY cost_usd DESC""")
+        by_model = rows("""SELECT model, provider, COUNT(*) calls, SUM(cost_usd) cost_usd
+            FROM usage GROUP BY model, provider ORDER BY calls DESC""")
+        by_user = rows("""SELECT end_user, COUNT(*) calls, SUM(cost_usd) cost_usd
+            FROM usage WHERE ts>=? GROUP BY end_user ORDER BY cost_usd DESC LIMIT 20""",
+                       (time.time() - 86400,))
+        recent = rows("""SELECT ts, end_user, role, requested, model, provider, otari_fallback, app_fallback,
+            cost_usd, latency_ms, tools, request_id FROM usage ORDER BY ts DESC LIMIT 25""")
+        tot = self._exec("SELECT COUNT(*) n, COALESCE(SUM(cost_usd),0) c FROM usage").fetchone()
+        return {"total_calls": tot["n"], "total_cost_usd": round(tot["c"], 6), "by_role": by_role,
+                "by_model": by_model, "by_customer_24h": by_user, "recent": recent}
