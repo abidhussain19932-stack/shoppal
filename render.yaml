@@ -26,6 +26,22 @@ services:
       - key: OTARI_BASE_URL
         value: https://api.otari.ai/api/v1
       - key: LLM_MODEL
-        value: openai/gpt-oss-120b
+        value: shoppal-chat   # Otari routing policy: gpt-oss-120b -> deepseek-v4-flash -> llama-3.3-70b
+      - key: LLM_FALLBACK_MODELS
+        value: openai/gpt-oss-120b,deepseek/deepseek-v4-flash,meta/llama-3.3-70b-instruct
+      - key: GUARD_MODEL
+        value: meta/llama-guard-4-12b
+      - key: SCOUT_MODEL
+        value: deepseek/deepseek-v4-flash
+      - key: QUOTE_MODEL
+        value: deepseek/deepseek-v4-flash
+      - key: MCP_TOKEN
+        generateValue: true
+      - key: PER_CUSTOMER_DAILY_USD
+        value: "0.05"
+      - key: APP_DAILY_USD
+        value: "0.50"
+      - key: TELEGRAM_ENABLED
+        value: "false"
       - key: STORE_NAME
         value: Noor Boutique

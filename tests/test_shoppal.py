@@ -73,33 +73,46 @@ def test_paypal_create_and_capture():
     assert cap["status"] == "COMPLETED"
 
 
-class ScriptedLLM:
-    """Fake OpenAI client that plays back a fixed sequence of tool calls."""
-    def __init__(self, steps):
-        self.steps = list(steps)
-        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+class ScriptedGateway:
+    """Fake Otari gateway: plays back scripted sales-model steps; canned answers for the other roles."""
+    def __init__(self, steps, guard="safe", trends="Jewel tones", quote=None):
+        self.steps, self.guard, self.trends, self.quote = list(steps), guard, trends, quote
+        self.calls = []
 
-    async def create(self, **kw):
-        step = self.steps.pop(0)
-        if isinstance(step, str):
-            msg = SimpleNamespace(content=step, tool_calls=None)
+    async def chat(self, role, models, end_user="", extra_body=None, **kw):
+        from app.otari import CallInfo
+        self.calls.append({"role": role, "models": models, "extra_body": extra_body, **kw})
+        if role == "guardrail":
+            msg = SimpleNamespace(content=self.guard, tool_calls=None)
+        elif role == "trend_scout":
+            msg = SimpleNamespace(content=self.trends, tool_calls=None)
+        elif role == "quote_calculator":
+            msg = SimpleNamespace(content=json.dumps(self.quote), tool_calls=None)
         else:
-            msg = SimpleNamespace(content="", tool_calls=[
-                SimpleNamespace(id=f"c{i}", function=SimpleNamespace(name=n, arguments=json.dumps(a)))
-                for i, (n, a) in enumerate(step)])
-        return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+            step = self.steps.pop(0)
+            if isinstance(step, str):
+                msg = SimpleNamespace(content=step, tool_calls=None)
+            else:
+                msg = SimpleNamespace(content="", tool_calls=[
+                    SimpleNamespace(id=f"c{i}", function=SimpleNamespace(name=n, arguments=json.dumps(a)))
+                    for i, (n, a) in enumerate(step)])
+        resp = SimpleNamespace(choices=[SimpleNamespace(message=msg)], model_dump=lambda: {})
+        return resp, CallInfo(role=role, requested=models[0], served_model=models[0], provider="test",
+                              cost_usd=0.001)
 
 
 def test_agent_full_purchase(catalog, store):
     transport, _ = fake_paypal_transport()
     pp = PayPal("id", "sec", "https://api-m.sandbox.paypal.com", httpx.AsyncClient(transport=transport))
-    llm = ScriptedLLM([
+    gw = ScriptedGateway([
         [("search_products", {"query": "red kurta", "max_price": 30})],
         [("add_to_cart", {"sku": "K101", "size": "m", "qty": 2})],
         [("create_checkout", {})],
         "Done! Tap the PayPal button to pay $48.00.",
     ])
-    agent = ShopAgent(llm, "m", catalog, store, pp, Settings())
+    from app.guard import Guard
+    agent = ShopAgent(gw, ["shoppal-chat", "openai/gpt-oss-120b"], catalog, store, pp, Settings(),
+                      guard=Guard(gw, "meta/llama-guard-4-12b"))
     r = run(agent.respond(7, "2 red kurtas size M, checkout"))
     assert r.tools_used == ["search_products", "add_to_cart", "create_checkout"]
     assert r.pay_url and r.order_id == "ORD1"
@@ -107,6 +120,9 @@ def test_agent_full_purchase(catalog, store):
     o = store.order("ORD1")
     assert o["total"] == 48.0 and o["items"][0]["size"] == "M"
     assert len(store.history(7)) == 2
+    assert r.guard == "safe" and r.meta()["model"] == "shoppal-chat"
+    assert gw.calls[0]["role"] == "guardrail" and gw.calls[1]["models"][0] == "shoppal-chat"
+    assert r.cost_usd == 0.005  # 1 guard + 4 sales calls
 
 
 def test_add_to_cart_needs_size(catalog, store):
