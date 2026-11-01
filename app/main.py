@@ -30,6 +30,7 @@ catalog = Catalog.load(settings.catalog_path)
 store = Store(settings.db_path)
 paypal = (PayPal(settings.paypal_client_id, settings.paypal_client_secret, settings.paypal_base)
           if settings.paypal_client_id else None)
+# All model traffic goes through the Otari gateway (OpenAI-compatible, base URL .../api/v1).
 llm = AsyncOpenAI(api_key=settings.llm_api_key or "missing", base_url=settings.llm_base_url)
 agent = ShopAgent(llm, settings.llm_model, catalog, store, paypal, settings)
 tg: Application | None = None

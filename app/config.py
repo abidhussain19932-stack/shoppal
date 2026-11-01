@@ -17,9 +17,14 @@ class Settings:
     paypal_env: str = os.getenv("PAYPAL_ENV", "sandbox")
     paypal_webhook_id: str = os.getenv("PAYPAL_WEBHOOK_ID", "")
     currency: str = os.getenv("CURRENCY", "USD")
-    llm_api_key: str = os.getenv("LLM_API_KEY", "")
-    llm_base_url: str = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
-    llm_model: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
+    # Otari (Mozilla.ai) LLM gateway: one OpenAI-compatible endpoint in front of every provider.
+    # Note the path is /api/v1, not /v1.
+    otari_api_key: str = os.getenv("OTARI_API_KEY", "")
+    otari_base_url: str = os.getenv("OTARI_BASE_URL", "https://api.otari.ai/api/v1")
+    # LLM_* still work for any other OpenAI-compatible endpoint; by default they point at Otari.
+    llm_api_key: str = os.getenv("LLM_API_KEY") or os.getenv("OTARI_API_KEY", "")
+    llm_base_url: str = os.getenv("LLM_BASE_URL") or os.getenv("OTARI_BASE_URL", "https://api.otari.ai/api/v1")
+    llm_model: str = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
     # Render sets RENDER_EXTERNAL_URL automatically, so PUBLIC_BASE_URL is optional there.
     public_base_url: str = (os.getenv("PUBLIC_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL")
                             or "http://localhost:8000").rstrip("/")

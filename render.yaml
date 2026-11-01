@@ -1,6 +1,7 @@
 services:
   - type: web
-    name: shoppal
+    name: shoppal-otari
+    branch: otari-hackathon
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
@@ -20,10 +21,10 @@ services:
         value: sandbox
       - key: CURRENCY
         value: USD
-      - key: LLM_API_KEY
+      - key: OTARI_API_KEY
         sync: false
-      - key: LLM_BASE_URL
-        value: https://api.groq.com/openai/v1
+      - key: OTARI_BASE_URL
+        value: https://api.otari.ai/api/v1
       - key: LLM_MODEL
         value: openai/gpt-oss-120b
       - key: STORE_NAME
