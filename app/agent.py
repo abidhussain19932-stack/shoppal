@@ -101,6 +101,7 @@ class Reply:
     guard: str = ""
     blocked: bool = False
     trends: Optional[dict] = None
+    simulate_outage: bool = False
 
     @property
     def cost_usd(self) -> float:
@@ -274,6 +275,11 @@ class ShopAgent:
         return None
 
     # ---------- loop ----------
+    OUTAGE_MODEL = "demo/primary-model-outage"  # not in Otari's catalog: the call fails and the chain moves on
+
+    def _models(self, reply: Reply) -> list:
+        return ([self.OUTAGE_MODEL] + self.models) if reply.simulate_outage else self.models
+
     async def _sales_call(self, msgs, chat_id, reply: Reply, last: bool):
         kw = {"messages": msgs, "temperature": 0.3}
         extra, turn = {}, ""
@@ -291,22 +297,23 @@ class ShopAgent:
             else:
                 kw["tools"] = TOOLS
         try:
-            resp, info = await self.gw.chat("sales", self.models, end_user=str(chat_id),
+            resp, info = await self.gw.chat("sales", self._models(reply), end_user=str(chat_id),
                                             extra_body=extra or None, **kw)
         except GatewayError:
             if not extra:
                 raise
             log.warning("MCP-enabled call failed; retrying with local catalog tools")
             kw["tools"] = TOOLS
-            resp, info = await self.gw.chat("sales", self.models, end_user=str(chat_id), **kw)
+            resp, info = await self.gw.chat("sales", self._models(reply), end_user=str(chat_id), **kw)
         if extra.get("mcp_servers"):
             info.otari_tools = info.otari_tools + [f"mcp:{c['tool']}" for c in self.store.mcp_calls(turn)]
         reply.calls.append(info.public())
         reply.tools_used += info.otari_tools
         return resp
 
-    async def respond(self, chat_id, user_text: str, max_steps: int = 8) -> Reply:
+    async def respond(self, chat_id, user_text: str, max_steps: int = 8, simulate_outage: bool = False) -> Reply:
         reply = Reply(text="")
+        reply.simulate_outage = simulate_outage
         history = self.store.history(chat_id)
         which = self.over_budget(chat_id)
         if which:

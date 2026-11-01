@@ -200,7 +200,7 @@ async def api_chat(request: Request):
         store.clear_cart(sid)
         return {"reply": "Conversation reset. What can I find for you?", "meta": {}}
     try:
-        r = await agent.respond(sid, text)
+        r = await agent.respond(sid, text, simulate_outage=bool(body.get("simulate_outage")))
     except Exception:
         log.exception("agent failed")
         return {"reply": "Sorry, something went wrong on my side. Please try again in a moment.", "meta": {}}

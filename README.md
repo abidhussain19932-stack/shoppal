@@ -54,6 +54,8 @@ customer ──▶ Llama Guard 4 ──unsafe──▶ polite refusal
 | `TELEGRAM_ENABLED` | `true` | Set `false` to run only the web chat |
 | `LLM_API_KEY` / `LLM_BASE_URL` | Otari values | Optional override for any other OpenAI-compatible endpoint |
 
+**Demo tip:** tick *simulate outage* in the web chat to prepend a model that doesn't exist; Otari rejects it and the reply badge shows the app falling back to the `shoppal-chat` policy.
+
 Tests (`pytest -q`) mock Otari: header/cost parsing, routing fallback, `budget_exceeded`, guardrail blocking, the MCP server protocol, MCP hand-off, code-execution quotes, web-search trends and spend caps.
 
 

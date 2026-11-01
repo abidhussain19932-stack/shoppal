@@ -160,3 +160,10 @@ def test_per_customer_budget(catalog, store):
     assert r.blocked and r.guard == "budget:customer" and gw.calls == []
     r = run(agent.respond("web-other1", "hi"))
     assert r.text == "one"
+
+
+def test_simulated_outage_uses_fallback_chain(catalog, store):
+    gw = ScriptedGateway(["ok"])
+    agent = ShopAgent(gw, ["shoppal-chat", "openai/gpt-oss-120b"], catalog, store, None, Settings())
+    run(agent.respond("web-out001", "hi", simulate_outage=True))
+    assert gw.calls[-1]["models"] == [ShopAgent.OUTAGE_MODEL, "shoppal-chat", "openai/gpt-oss-120b"]

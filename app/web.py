@@ -20,7 +20,7 @@ footer{position:fixed;bottom:0;left:0;right:0;background:var(--bg);border-top:1p
 .chips{max-width:760px;margin:0 auto 8px;display:flex;gap:6px;flex-wrap:wrap}
 .chips button{border:1px solid var(--line);background:#fff;border-radius:16px;padding:5px 10px;font-size:13px;cursor:pointer}
 form{max-width:760px;margin:0 auto;display:flex;gap:8px}
-input{flex:1;padding:12px;border-radius:12px;border:1px solid var(--line);font-size:16px}
+input#q{flex:1;padding:12px;border-radius:12px;border:1px solid var(--line);font-size:16px}
 form button{padding:0 18px;border:0;border-radius:12px;background:var(--acc);color:#fff;font-weight:700;font-size:15px}
 .typing{color:var(--mut);font-style:italic}
 </style>
@@ -28,7 +28,7 @@ form button{padding:0 18px;border:0;border-radius:12px;background:var(--acc);col
 <div><a href="/stats">Otari usage &amp; cost →</a></div></header>
 <main id=log></main>
 <footer><div class=chips id=chips></div>
-<form id=f><input id=q autocomplete=off placeholder="Ask for a kurta, saree, a Diwali look…" maxlength=500><button>Send</button></form></footer>
+<form id=f><label style="font-size:12px;display:flex;align-items:center;gap:4px;white-space:nowrap" title="Prepends a model that does not exist, so the call fails and the app falls back to the Otari routing policy"><input type=checkbox id=out style="flex:none">simulate outage</label><input id=q autocomplete=off placeholder="Ask for a kurta, saree, a Diwali look…" maxlength=500><button>Send</button></form></footer>
 <script>
 const log=document.getElementById('log'),q=document.getElementById('q');
 let sid=localStorage.getItem('shoppal_sid');
@@ -40,11 +40,11 @@ function md(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')}
 function add(role,html,meta){const d=document.createElement('div');d.className='msg '+role;d.innerHTML='<div class=bub>'+html+'</div>'+(meta||'');log.appendChild(d);window.scrollTo(0,document.body.scrollHeight);return d}
 function metaHtml(m){if(!m||!m.calls)return '';let h='<div class=meta>';
  const g=m.guard||'';if(g)h+='<span class="'+(g.startsWith('safe')?'ok':(g.startsWith('unsafe')||g.startsWith('budget')?'bad':''))+'">🛡️ '+esc(g)+'</span>';
- m.calls.forEach(c=>{h+='<span title="'+esc(c.request_id||'')+'">'+esc(c.role)+': '+esc(c.model)+(c.provider?' @'+esc(c.provider):'')+(c.requested&&c.requested!==c.model?' (asked '+esc(c.requested)+')':'')+(c.otari_fallback||c.app_fallback?' ↪ fallback':'')+' · $'+Number(c.cost_usd).toFixed(6)+'</span>'});
+ m.calls.forEach(c=>{h+='<span title="'+esc(c.request_id||'')+'">'+esc(c.role)+': '+esc(c.model)+(c.provider?' @'+esc(c.provider):'')+(c.requested&&c.requested!==c.model?' (asked '+esc(c.requested)+')':'')+(c.app_fallback?' ↪ app fallback':'')+(c.otari_fallback?' ↪ Otari policy fallback':'')+' · $'+Number(c.cost_usd).toFixed(6)+'</span>'});
  if(m.tools&&m.tools.length)h+='<span>🔧 '+esc(m.tools.join(', '))+'</span>';
  h+='<span><b>turn cost $'+Number(m.cost_usd||0).toFixed(6)+'</b></span></div>';return h}
 async function send(t){t=(t||q.value).trim();if(!t)return;q.value='';add('u',esc(t));const w=add('b','<span class=typing>ShopPal is typing…</span>');
- try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sid,message:t})});const j=await r.json();
+ try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sid,message:t,simulate_outage:document.getElementById('out').checked})});const j=await r.json();
   let h=md(j.reply||j.detail||'…');if(j.pay_url)h+='<br><a class=pay target=_blank rel=noopener href="'+esc(j.pay_url)+'">Pay with PayPal (Sandbox)</a>';
   w.innerHTML='<div class=bub>'+h+'</div>'+metaHtml(j.meta)}catch(e){w.innerHTML='<div class=bub>Network error, please retry.</div>'}
  window.scrollTo(0,document.body.scrollHeight)}
