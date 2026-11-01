@@ -116,7 +116,7 @@ def test_agent_sends_mcp_server_to_otari(catalog, store):
     run(agent.respond("web-abc123", "red kurta"))
     sales = [c for c in gw.calls if c["role"] == "sales"][0]
     srv = sales["extra_body"]["mcp_servers"][0]
-    assert srv["url"] == "https://x.onrender.com/mcp" and srv["authorization_token"] == "tok"
+    assert srv["url"].startswith("https://x.onrender.com/mcp?sid=web-abc123&turn=") and srv["authorization_token"] == "tok"
     names = [t["function"]["name"] for t in sales["tools"]]
     assert "search_products" not in names and "create_checkout" in names  # catalog comes via MCP
 

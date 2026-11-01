@@ -61,14 +61,15 @@ td,th{border:1px solid #e6e1d6;padding:5px 7px;text-align:left}th{background:#ec
 <h1>📊 ShopPal × Otari: usage, cost and routing</h1><p><a href="/">← back to chat</a> · every number below comes from Otari's per-request <code>usage.cost_usd</code> and <code>Otari-Model / Otari-Provider / Otari-Fallback</code> response headers.</p>
 <div id=k></div><h2>By role (each role is a different open-weight model)</h2><div id=r></div>
 <h2>By model actually served</h2><div id=m></div><h2>Per-customer spend, last 24h (cap enforced per customer)</h2><div id=c></div>
-<h2>Last 25 Otari calls</h2><div id=l></div><h2>Configuration</h2><pre id=cfg></pre>
+<h2>Last 25 Otari calls</h2><div id=l></div><h2>MCP tool calls Otari made to ShopPal's catalog server (/mcp)</h2><div id=mc></div><h2>Configuration</h2><pre id=cfg></pre>
 <script>
 function t(rows,cols){if(!rows.length)return '<p>No calls yet.</p>';return '<table><tr>'+cols.map(c=>'<th>'+c+'</th>').join('')+'</tr>'+rows.map(r=>'<tr>'+cols.map(c=>{let v=r[c];if(c==='cost_usd')v='$'+Number(v||0).toFixed(6);if(c==='ts')v=new Date(v*1000).toLocaleString();return '<td>'+String(v??'').replace(/</g,'&lt;')+'</td>'}).join('')+'</tr>').join('')+'</table>'}
 fetch('/api/stats').then(r=>r.json()).then(s=>{
-document.getElementById('k').innerHTML=[['Otari calls',s.total_calls],['Total cost','$'+Number(s.total_cost_usd).toFixed(6)],['App spend 24h','$'+Number(s.limits.app_spend_24h).toFixed(6)+' / $'+s.limits.app_daily_usd],['Per-customer cap / 24h','$'+s.limits.per_customer_daily_usd]].map(x=>'<span class=k>'+x[0]+'<b>'+x[1]+'</b></span>').join('');
+document.getElementById('k').innerHTML=[['Otari calls',s.total_calls],['MCP tool calls',s.mcp_tool_calls],['Total cost','$'+Number(s.total_cost_usd).toFixed(6)],['App spend 24h','$'+Number(s.limits.app_spend_24h).toFixed(6)+' / $'+s.limits.app_daily_usd],['Per-customer cap / 24h','$'+s.limits.per_customer_daily_usd]].map(x=>'<span class=k>'+x[0]+'<b>'+x[1]+'</b></span>').join('');
 document.getElementById('r').innerHTML=t(s.by_role,['role','calls','tokens','cost_usd','otari_fallbacks','app_fallbacks','avg_ms']);
 document.getElementById('m').innerHTML=t(s.by_model,['model','provider','calls','cost_usd']);
 document.getElementById('c').innerHTML=t(s.by_customer_24h,['end_user','calls','cost_usd']);
 document.getElementById('l').innerHTML=t(s.recent,['ts','end_user','role','requested','model','provider','otari_fallback','app_fallback','tools','cost_usd','latency_ms']);
+document.getElementById('mc').innerHTML=t(s.mcp_recent,['ts','sid','tool','args']);
 document.getElementById('cfg').textContent=JSON.stringify(s.config,null,2)});
 </script></html>"""

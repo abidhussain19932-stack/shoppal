@@ -231,6 +231,12 @@ async def mcp_endpoint(request: Request):
     if settings.mcp_token and request.headers.get("authorization", "") != f"Bearer {settings.mcp_token}":
         raise HTTPException(status_code=401)
     msg = await request.json()
+    sid, turn = request.query_params.get("sid", ""), request.query_params.get("turn", "")
+    for m in (msg if isinstance(msg, list) else [msg]):
+        if isinstance(m, dict) and m.get("method") == "tools/call":
+            p = m.get("params") or {}
+            log.info("MCP tools/call from Otari: %s %s", p.get("name"), p.get("arguments"))
+            store.log_mcp(sid, turn, p.get("name", ""), p.get("arguments") or {})
     if isinstance(msg, list):
         out = [r for r in (mcp_server.handle(catalog, m, settings.currency) for m in msg) if r is not None]
         return JSONResponse(out) if out else Response(status_code=202)

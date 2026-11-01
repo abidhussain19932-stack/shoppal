@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS usage (ts REAL, end_user TEXT, role TEXT, requested T
     provider TEXT, otari_fallback INTEGER, app_fallback INTEGER, attempts INTEGER, cost_usd REAL,
     prompt_tokens INTEGER, completion_tokens INTEGER, request_id TEXT, latency_ms INTEGER, tools TEXT);
 CREATE INDEX IF NOT EXISTS usage_user_ts ON usage (end_user, ts);
+CREATE TABLE IF NOT EXISTS mcp_log (ts REAL, sid TEXT, turn TEXT, tool TEXT, args TEXT);
 """
 
 
@@ -124,5 +125,19 @@ class Store:
         recent = rows("""SELECT ts, end_user, role, requested, model, provider, otari_fallback, app_fallback,
             cost_usd, latency_ms, tools, request_id FROM usage ORDER BY ts DESC LIMIT 25""")
         tot = self._exec("SELECT COUNT(*) n, COALESCE(SUM(cost_usd),0) c FROM usage").fetchone()
-        return {"total_calls": tot["n"], "total_cost_usd": round(tot["c"], 6), "by_role": by_role,
+        mcp_n = self._exec("SELECT COUNT(*) n FROM mcp_log").fetchone()["n"]
+        return {"mcp_tool_calls": mcp_n, "mcp_recent": self.mcp_recent(), "total_calls": tot["n"], "total_cost_usd": round(tot["c"], 6), "by_role": by_role,
                 "by_model": by_model, "by_customer_24h": by_user, "recent": recent}
+
+    # MCP calls received from Otari (Otari runs the MCP loop server-side, so we log them on arrival)
+    def log_mcp(self, sid, turn, tool, args):
+        self._exec("INSERT INTO mcp_log VALUES (?,?,?,?,?)",
+                   (time.time(), str(sid or ""), str(turn or ""), tool, json.dumps(args)[:500]))
+
+    def mcp_calls(self, turn) -> list[dict]:
+        return [dict(r) for r in self._exec("SELECT tool, args FROM mcp_log WHERE turn=? ORDER BY ts",
+                                            (str(turn),)).fetchall()]
+
+    def mcp_recent(self, limit=15) -> list[dict]:
+        return [dict(r) for r in self._exec("SELECT ts, sid, tool, args FROM mcp_log ORDER BY ts DESC LIMIT ?",
+                                            (limit,)).fetchall()]

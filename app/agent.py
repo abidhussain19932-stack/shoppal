@@ -9,7 +9,9 @@ All model traffic goes through the Otari gateway (see app/otari.py):
 """
 import json
 import logging
+import secrets
 import time
+from urllib.parse import quote
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -274,10 +276,12 @@ class ShopAgent:
     # ---------- loop ----------
     async def _sales_call(self, msgs, chat_id, reply: Reply, last: bool):
         kw = {"messages": msgs, "temperature": 0.3}
-        extra = {}
+        extra, turn = {}, ""
         if not last:
             if self.mcp_url:
-                srv = {"name": "shoppal_catalog", "url": self.mcp_url,
+                turn = secrets.token_hex(6)
+                url = f"{self.mcp_url}?sid={quote(str(chat_id))}&turn={turn}"  # lets us attribute MCP calls
+                srv = {"name": "shoppal_catalog", "url": url,
                        "purpose_hint": "Use for every product, price, size or stock question about the shop.",
                        "allowed_tools": ["search_products", "get_product"]}
                 if self.mcp_token:
@@ -295,9 +299,10 @@ class ShopAgent:
             log.warning("MCP-enabled call failed; retrying with local catalog tools")
             kw["tools"] = TOOLS
             resp, info = await self.gw.chat("sales", self.models, end_user=str(chat_id), **kw)
+        if extra.get("mcp_servers"):
+            info.otari_tools = info.otari_tools + [f"mcp:{c['tool']}" for c in self.store.mcp_calls(turn)]
         reply.calls.append(info.public())
-        for t in info.otari_tools:
-            reply.tools_used.append(f"mcp:{t}" if t in ("search_products", "get_product") else t)
+        reply.tools_used += info.otari_tools
         return resp
 
     async def respond(self, chat_id, user_text: str, max_steps: int = 8) -> Reply:
