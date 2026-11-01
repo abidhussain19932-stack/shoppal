@@ -1,7 +1,7 @@
-"""ShopPal: Telegram AI sales agent with PayPal checkout.
+"""ShopPal: AI sales agent (Telegram + web chat) with PayPal checkout, running on the Otari LLM gateway.
 
-One process runs both the Telegram bot (long polling) and a FastAPI server
-for PayPal return/cancel pages and webhooks.
+One process runs the Telegram bot (optional), a web chat demo, a usage/cost dashboard,
+an MCP server for the catalog, and the PayPal return/cancel pages and webhooks.
 """
 import asyncio
 import contextlib
@@ -11,13 +11,18 @@ import logging
 import re
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
+
+from .web import CHAT_HTML, STATS_HTML
 from openai import AsyncOpenAI
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction, ParseMode
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from .agent import ShopAgent
+from . import mcp_server
+from .guard import Guard
+from .otari import OtariGateway
 from .catalog import Catalog
 from .config import settings
 from .paypal import PayPal, PayPalError
@@ -31,8 +36,12 @@ store = Store(settings.db_path)
 paypal = (PayPal(settings.paypal_client_id, settings.paypal_client_secret, settings.paypal_base)
           if settings.paypal_client_id else None)
 # All model traffic goes through the Otari gateway (OpenAI-compatible, base URL .../api/v1).
-llm = AsyncOpenAI(api_key=settings.llm_api_key or "missing", base_url=settings.llm_base_url)
-agent = ShopAgent(llm, settings.llm_model, catalog, store, paypal, settings)
+llm = AsyncOpenAI(api_key=settings.llm_api_key or "missing", base_url=settings.llm_base_url,
+                  max_retries=1, timeout=90)
+gateway = OtariGateway(llm, store)
+guard = Guard(gateway, settings.guard_model, settings.guard_enabled)
+agent = ShopAgent(gateway, settings.model_chain, catalog, store, paypal, settings, guard=guard,
+                  mcp_url=settings.mcp_url, mcp_token=settings.mcp_token)
 tg: Application | None = None
 # Secret Telegram echoes on every webhook call, derived from the bot token so no extra env var is needed.
 TG_SECRET = hashlib.sha256(f"shoppal:{settings.telegram_token}".encode()).hexdigest()[:48]
@@ -137,9 +146,10 @@ async def finalize_order(order_id: str, source: str) -> dict | None:
     log.info("order %s completed via %s", order_id, source)
     if tg:
         items = "\n".join(f'• {i["qty"]}× {i["name"]} ({i["size"]})' for i in o["items"])
-        await tg.bot.send_message(int(o["chat_id"]),
-                                  f"✅ Payment received! Order #{order_id[-6:]}\n{items}\n"
-                                  f'Total {o["total"]:.2f} {o["currency"]}. We\'ll ship it soon 🙏')
+        if str(o["chat_id"]).lstrip("-").isdigit():  # Telegram buyer (web-chat buyers see the return page)
+            await tg.bot.send_message(int(o["chat_id"]),
+                                      f"✅ Payment received! Order #{order_id[-6:]}\n{items}\n"
+                                      f'Total {o["total"]:.2f} {o["currency"]}. We\'ll ship it soon 🙏')
         if settings.seller_chat_id:
             ship = pp.get("purchase_units", [{}])[0].get("shipping", {}).get("address", {})
             addr = ", ".join(filter(None, [ship.get("address_line_1"), ship.get("admin_area_2"),
@@ -160,10 +170,84 @@ PAGE = """<!doctype html><meta name=viewport content="width=device-width,initial
 <h1>{emoji}</h1><h2>{title}</h2><p>{body}</p></body>"""
 
 
-@api.get("/")
+@api.get("/health")
 async def health():
     return {"ok": True, "store": settings.store_name, "products": len(catalog.products),
-            "telegram": "ready" if tg else "connecting", "paypal": bool(paypal)}
+            "telegram": ("ready" if tg else "connecting") if settings.telegram_enabled and settings.telegram_token
+            else "disabled", "paypal": bool(paypal), "llm_gateway": settings.llm_base_url,
+            "models": settings.model_chain, "guard": settings.guard_model if settings.guard_enabled else None,
+            "mcp": settings.mcp_url or None}
+
+
+# ---------------- Web chat demo ----------------
+WEB_ID = re.compile(r"^web-[a-z0-9]{6,32}$")
+
+
+@api.get("/", response_class=HTMLResponse)
+async def web_chat():
+    return CHAT_HTML.replace("{{STORE}}", html.escape(settings.store_name))
+
+
+@api.post("/api/chat")
+async def api_chat(request: Request):
+    body = await request.json()
+    sid = str(body.get("session_id", ""))
+    text = str(body.get("message", "")).strip()[:500]
+    if not WEB_ID.match(sid) or not text:
+        raise HTTPException(status_code=400, detail="session_id (web-xxxxxx) and message required")
+    if text.lower() in ("/reset", "reset"):
+        store.reset_history(sid)
+        store.clear_cart(sid)
+        return {"reply": "Conversation reset. What can I find for you?", "meta": {}}
+    try:
+        r = await agent.respond(sid, text)
+    except Exception:
+        log.exception("agent failed")
+        return {"reply": "Sorry, something went wrong on my side. Please try again in a moment.", "meta": {}}
+    return {"reply": r.text, "pay_url": r.pay_url, "order_id": r.order_id, "meta": r.meta()}
+
+
+@api.get("/api/stats")
+async def api_stats():
+    s = store.usage_summary()
+    s["limits"] = {"per_customer_daily_usd": settings.per_customer_daily_usd,
+                   "app_daily_usd": settings.app_daily_usd,
+                   "app_spend_24h": round(store.spend_since(__import__("time").time() - 86400), 6)}
+    s["config"] = {"gateway": settings.llm_base_url, "sales_models": settings.model_chain,
+                   "guard_model": settings.guard_model, "scout_model": settings.scout_model,
+                   "quote_model": settings.quote_model, "mcp": settings.mcp_url or None}
+    return s
+
+
+@api.get("/stats", response_class=HTMLResponse)
+@api.get("/admin/usage", response_class=HTMLResponse)
+async def stats_page():
+    return STATS_HTML
+
+
+# ---------------- MCP server (catalog) ----------------
+@api.post("/mcp")
+async def mcp_endpoint(request: Request):
+    if settings.mcp_token and request.headers.get("authorization", "") != f"Bearer {settings.mcp_token}":
+        raise HTTPException(status_code=401)
+    msg = await request.json()
+    if isinstance(msg, list):
+        out = [r for r in (mcp_server.handle(catalog, m, settings.currency) for m in msg) if r is not None]
+        return JSONResponse(out) if out else Response(status_code=202)
+    res = mcp_server.handle(catalog, msg, settings.currency)
+    if res is None:
+        return Response(status_code=202)
+    return JSONResponse(res)
+
+
+@api.get("/mcp")
+async def mcp_get():
+    return Response(status_code=405, headers={"Allow": "POST"})
+
+
+@api.delete("/mcp")
+async def mcp_delete():
+    return Response(status_code=200)
 
 
 @api.get("/paypal/return", response_class=HTMLResponse)
@@ -171,8 +255,8 @@ async def paypal_return(token: str = ""):
     o = await finalize_order(token, "return") if token and paypal else None
     if o and o["status"] == "COMPLETED":
         return PAGE.format(emoji="✅", title="Payment complete",
-                           body="Thank you! You can close this tab and go back to Telegram.")
-    return PAGE.format(emoji="⏳", title="Processing", body="We're confirming your payment. Check Telegram shortly.")
+                           body="Thank you! You can close this tab and go back to the chat.")
+    return PAGE.format(emoji="⏳", title="Processing", body="We're confirming your payment. Check the chat shortly.")
 
 
 @api.get("/paypal/cancel", response_class=HTMLResponse)
@@ -180,7 +264,7 @@ async def paypal_cancel(token: str = ""):
     if token and store.order(token):
         store.update_order(token, "CANCELLED")
     return PAGE.format(emoji="↩️", title="Checkout cancelled",
-                       body="No payment was taken. Return to Telegram if you'd like to try again.")
+                       body="No payment was taken. Return to the chat if you'd like to try again.")
 
 
 @api.post("/paypal/webhook")
@@ -207,8 +291,8 @@ async def paypal_webhook(request: Request):
 
 @api.on_event("startup")
 async def on_startup():
-    if not settings.telegram_token:
-        log.warning("TELEGRAM_BOT_TOKEN not set; running API only")
+    if not settings.telegram_token or not settings.telegram_enabled:
+        log.warning("Telegram disabled; running web chat + API only")
         return
     # Connect to Telegram in the background so a slow Telegram API never stops the web
     # server (and the PayPal return/webhook endpoints) from coming up.
